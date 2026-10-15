@@ -1,0 +1,14 @@
+# Original n8n exports
+private_exports/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

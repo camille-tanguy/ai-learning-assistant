@@ -1,0 +1,835 @@
+{
+  "name": "04 - Telegram Interaction",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const rows = items.map(item => item.json);\n\nif (rows.length === 0) {\n  return [\n    {\n      json: {\n        digest_text: \"🤖 <b>No daily digest is available yet.</b>\\n\\nCheck back after the next daily update.\"\n      }\n    }\n  ];\n}\n\nrows.sort((a, b) => {\n  const dateA = new Date(a.sent_at || a.date || 0);\n  const dateB = new Date(b.sent_at || b.date || 0);\n\n  return dateB - dateA;\n});\n\nreturn [\n  {\n    json: rows[0]\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        48
+      ],
+      "id": "2d61bf26-6b99-4c19-9d60-7d013ec7a86f",
+      "name": "Select Latest Digest"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/start",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "841f7f59-7742-4640-9974-36c6a3c2ab7a"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "13226b37-dc43-4979-b642-e3b2243dc91d",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/help",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "help"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c9c45220-69bf-4834-801e-91240fc4754f",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "/daily",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "daily"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "01cc1d3f-e921-4979-a7fd-a925c455023f",
+                    "leftValue": "={{ ($json.message.text || '').trim() }}",
+                    "rightValue": "=/learn",
+                    "operator": {
+                      "type": "string",
+                      "operation": "startsWith"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "learn"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ],
+      "id": "bbdb32a3-587a-42b5-bf4f-d464d60c2a64",
+      "name": "Route Command"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b63b1045-d221-405f-a7b7-28805aee87fc",
+      "name": "Receive Telegram Command"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "👋 Welcome to AI Learning Assistant  I help you stay up to date with recent AI research and understand the ideas that matter without having to browse dozens of papers yourself.  Available commands:  /daily Get the latest curated AI digest.  /learn A-[arxiv_id] Get a deeper explanation of a specific article.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        -288
+      ],
+      "id": "954f2e1c-4679-48de-bb94-ea763dbdf9d5",
+      "name": "Send Welcome Message"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "🤖 AI Learning Assistant — Help  Available commands:  /daily Get the latest curated AI digest.  /learn A-[arxiv_id] Get a deeper explanation of a specific article.  Example: /learn A-2610.08927  /help Show this help message.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        464,
+        -48
+      ],
+      "id": "fd7da759-e371-4f92-b3a7-603952a6a67e",
+      "name": "Send Help Message"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 309822318,
+          "mode": "list",
+          "cachedResultName": "DAILY_DIGEST"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        464,
+        112
+      ],
+      "id": "f950eff5-73bf-4c3e-967e-f8b0fc27c054",
+      "name": "Load Daily Digests",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "={{ $json.message_text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1136,
+        48
+      ],
+      "id": "829b18d9-3503-4c46-9cb4-a0949af446d9",
+      "name": "Send Latest Digest"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const text = $json.message?.text || \"\";\n\nconst parts = text.trim().split(/\\s+/);\n\nconst articleId = parts[1] || \"\";\n\nreturn {\n  json: {\n    chat_id: $json.message?.chat?.id || \"\",\n    article_id: articleId\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        272
+      ],
+      "id": "a2d57e1b-94be-4298-bf65-f327ff489899",
+      "name": "Extract Article ID"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4b8f37b6-e054-4f5f-9889-d4c51ed12d84",
+              "leftValue": "={{ $json.article_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        272
+      ],
+      "id": "6614392a-5ba4-453e-98ea-20373088a113",
+      "name": "Check Article ID Provided"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "ARTICLES"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "article_id",
+              "lookupValue": "={{ $json.article_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        912,
+        208
+      ],
+      "id": "4b09734c-7df0-4950-bc93-62d1da6814b2",
+      "name": "Find Article by ID",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e7434f6a-e0c3-4a1f-898c-e5956370af29",
+              "leftValue": "={{ $json.article_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        208
+      ],
+      "id": "f9fd00a1-ca47-419c-8d5e-829e2ffabfac",
+      "name": "Check Article Found"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "I couldn't find that article ID.  Try /daily to see the latest available articles.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        304
+      ],
+      "id": "892029b7-5abf-4b4d-bffb-ef46fe30d2ad",
+      "name": "Send Article Not Found"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "Please use:  /learn A-[arxiv_id]  Example: /learn A-2610.08927",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        368
+      ],
+      "id": "9eedafdc-c90c-4297-bc17-ad75dab3983d",
+      "name": "Send Invalid Learn Format"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ `Explain this AI research article in a clear, learning-oriented way.\n\nTitle:\n${$json.title}\n\nCategory:\n${$json.category}\n\nWhat it does:\n${$json.what_it_does}\n\nWhy it matters:\n${$json.why_it_matters}\n\nWrite a deeper explanation for someone learning AI/ML/software engineering.\n\nStructure your answer exactly like this:\n\n🧠 Big idea\nExplain the central idea simply.\n\n⚙️ How it works\nExplain the mechanism or approach in practical terms.\n\n💡 Why it matters\nExplain the technical or practical importance.\n\n📚 What you can learn from it\nGive 2-3 concrete learning points.\n\nKeep it concise but educational.\nDo not invent information that is not supported by the article data above.\n\nFormatting rules:\n- Use plain text only.\n- Do not use Markdown.\n- Do not use asterisks, underscores, backticks, or Markdown headings.\n- Keep the section labels exactly as written above.` }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1344,
+        -32
+      ],
+      "id": "953caf9b-717b-4e94-b472-9187da4aafa2",
+      "name": "Generate Deep Explanation"
+    },
+    {
+      "parameters": {
+        "model": "openrouter/free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        144
+      ],
+      "id": "98e3add2-7006-46b1-9b95-9acd881017f9",
+      "name": "Free OpenRouter Model"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').first().json.message.chat.id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1648,
+        -32
+      ],
+      "id": "bbc2114f-950f-4a66-881c-253dcc352677",
+      "name": "Send Deep Explanation"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 309822318,
+          "mode": "list",
+          "cachedResultName": "DAILY_DIGEST"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "date",
+              "lookupValue": "={{ $now.toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        464,
+        -208
+      ],
+      "id": "dee76552-7ece-441a-928e-7ed7bc04d6e3",
+      "name": "Check Today's Digest",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fee1696c-0b4c-427b-86d6-24c407c56d11",
+              "leftValue": "={{ $json.digest_text }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        -208
+      ],
+      "id": "7840a4f7-d460-44d7-99e7-9b6bb43fb19b",
+      "name": "Today's Digest Exists?"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SELECT_WORKFLOW_AFTER_IMPORT",
+          "mode": "list",
+          "cachedResultName": "02 - AI Daily Pipeline"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        1136,
+        -128
+      ],
+      "id": "0dba5969-c797-4602-a695-f26d29d7e49a",
+      "name": "02 - AI Daily Pipeline"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "👋 Welcome to AI Learning Assistant!  👋 Welcome! Today's digest isn't ready yet. I'm preparing it now...",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        -128
+      ],
+      "id": "8b10befd-9571-4542-9857-b6e79fe3061e",
+      "name": "Send Digest Preparation Message"
+    },
+    {
+      "parameters": {
+        "jsCode": "const digest = $json.digest_text || \"\";\n\nconst MAX_LENGTH = 3800;\nconst separator = \"\\n\\n────────────\\n\\n\";\n\nconst sections = digest.split(separator);\n\nconst messages = [];\nlet current = \"\";\n\nfor (const section of sections) {\n  const candidate = current\n    ? current + separator + section\n    : section;\n\n  if (candidate.length <= MAX_LENGTH) {\n    current = candidate;\n  } else {\n    if (current) {\n      messages.push(current);\n    }\n    current = section;\n  }\n}\n\nif (current) {\n  messages.push(current);\n}\n\nreturn messages.map((message, index) => ({\n  json: {\n    message_text: message,\n    part: index + 1,\n    total_parts: messages.length\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        48
+      ],
+      "id": "2e78be5f-ec30-44b4-8e5e-29c9b840c252",
+      "name": "Split Digest for Telegram"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 309822318,
+          "mode": "list",
+          "cachedResultName": "DAILY_DIGEST"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "date",
+              "lookupValue": "={{ $now.toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1360,
+        -208
+      ],
+      "id": "5edd7c7a-a480-4d06-849d-affae1f2def3",
+      "name": "Load Today's Digest",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const digest = $json.digest_text || \"\";\n\nconst MAX_LENGTH = 3800;\nconst separator = \"\\n\\n────────────\\n\\n\";\n\nconst sections = digest.split(separator);\n\nconst messages = [];\nlet current = \"\";\n\nfor (const section of sections) {\n  const candidate = current\n    ? current + separator + section\n    : section;\n\n  if (candidate.length <= MAX_LENGTH) {\n    current = candidate;\n  } else {\n    if (current) {\n      messages.push(current);\n    }\n\n    current = section;\n  }\n}\n\nif (current) {\n  messages.push(current);\n}\n\nreturn messages.map((message, index) => ({\n  json: {\n    message_text: message,\n    part: index + 1,\n    total_parts: messages.length\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        -208
+      ],
+      "id": "28e1f387-9e73-4811-a2f2-8ec088a38e19",
+      "name": "Split Today's Digest for Telegram"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Receive Telegram Command').item.json.message.chat.id }}",
+        "text": "{{ $json.message_text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        -208
+      ],
+      "id": "a501dde5-92c3-422f-8278-00e3edbb98ea",
+      "name": "Send Generated Digest"
+    }
+  ],
+  "connections": {
+    "Select Latest Digest": {
+      "main": [
+        [
+          {
+            "node": "Split Digest for Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Command": {
+      "main": [
+        [
+          {
+            "node": "Check Today's Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Help Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Daily Digests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Article ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Telegram Command": {
+      "main": [
+        [
+          {
+            "node": "Route Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Daily Digests": {
+      "main": [
+        [
+          {
+            "node": "Select Latest Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Article ID": {
+      "main": [
+        [
+          {
+            "node": "Check Article ID Provided",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Article ID Provided": {
+      "main": [
+        [
+          {
+            "node": "Find Article by ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Invalid Learn Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Article by ID": {
+      "main": [
+        [
+          {
+            "node": "Check Article Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Article Found": {
+      "main": [
+        [
+          {
+            "node": "Generate Deep Explanation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Article Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Deep Explanation": {
+      "main": [
+        [
+          {
+            "node": "Send Deep Explanation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Free OpenRouter Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Deep Explanation",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Today's Digest": {
+      "main": [
+        [
+          {
+            "node": "Today's Digest Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Today's Digest Exists?": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Digest Preparation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Digest Preparation Message": {
+      "main": [
+        [
+          {
+            "node": "02 - AI Daily Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - AI Daily Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Load Today's Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Digest for Telegram": {
+      "main": [
+        [
+          {
+            "node": "Send Latest Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Today's Digest": {
+      "main": [
+        [
+          {
+            "node": "Split Today's Digest for Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Today's Digest for Telegram": {
+      "main": [
+        [
+          {
+            "node": "Send Generated Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
