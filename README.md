@@ -1,5 +1,7 @@
 # AI Learning Assistant
 
+📄 [Read the Technical Report (PDF)](docs/AI_Learning_Assistant_Technical_Report.pdf)
+
 ## Automated AI Research Curation & Learning Assistant
 
 An AI-powered automation system that discovers, filters, ranks, and summarizes recent artificial intelligence research papers, delivering personalized learning experiences through Telegram.
