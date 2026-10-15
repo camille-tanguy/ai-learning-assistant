@@ -1,0 +1,1019 @@
+{
+  "name": "02 - AI Daily Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -992,
+        -176
+      ],
+      "id": "71eb0ee1-2681-4dbb-9a60-4c13a50787a6",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        32
+      ],
+      "id": "22debfdf-5899-41c0-87ed-e66a9660b11b",
+      "name": "XML"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const article = $json;\n\nconst text = `${article.title || \"\"} ${article.description || \"\"}`.toLowerCase();\n\nconst keywords = [\n  \"artificial intelligence\",\n  \"machine learning\",\n  \"deep learning\",\n  \"large language model\",\n  \"llm\",\n  \"agent\",\n  \"computer vision\",\n  \"neural network\",\n  \"transformer\",\n  \"reinforcement learning\",\n  \"generative ai\",\n  \"foundation model\",\n  \"multimodal\",\n  \"reasoning\",\n  \"robotics\"\n];\n\nconst matchedKeywords = keywords.filter(keyword =>\n  text.includes(keyword)\n);\n\nreturn {\n  json: {\n    ...article,\n    keyword_matches: matchedKeywords,\n    keyword_match_count: matchedKeywords.length,\n    deterministic_relevant: matchedKeywords.length > 0\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        -112
+      ],
+      "id": "b85043da-9993-4a6b-b61e-0274e8eba35e",
+      "name": "Keyword Relevance Filter"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "ARTICLES"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        64,
+        -128
+      ],
+      "id": "fbd79f2f-fec6-4cf8-b341-a493b9c19e41",
+      "name": "Load Existing Articles",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// All fresh articles coming from BOTH sources\nconst articles = $('Merge').all().map(item => item.json);\n\n// Articles already saved in Google Sheets\nconst existingArticles = items.map(item => item.json);\n\n\n// ---------- Helper: extract arXiv ID ----------\nfunction getArxivId(article) {\n  if (article.arxiv_id) {\n    return String(article.arxiv_id).replace(/v\\d+$/, \"\");\n  }\n\n  const url = article.original_url || article.url || \"\";\n\n  const match = url.match(/arxiv\\.org\\/abs\\/([^/?#]+)/);\n\n  if (match) {\n    return match[1].replace(/v\\d+$/, \"\");\n  }\n\n  return \"\";\n}\n\n\n// ---------- 1. Build set of articles already stored ----------\nconst existingIds = new Set(\n  existingArticles\n    .map(article => getArxivId(article))\n    .filter(Boolean)\n);\n\n\n// ---------- 2. Deduplicate + enrich current sources ----------\nconst byArxivId = new Map();\n\nfor (const article of articles) {\n\n  const arxivId = getArxivId(article);\n\n  // Fallback if somehow no arXiv ID exists\n  const key = arxivId || article.url;\n\n  if (!key) continue;\n\n\n  // First time we see this paper\n  if (!byArxivId.has(key)) {\n    byArxivId.set(key, {\n      ...article,\n      arxiv_id: arxivId\n    });\n\n    continue;\n  }\n\n\n  // Same paper found from another source\n  const existing = byArxivId.get(key);\n\n  const currentIsHF =\n    article.source === \"Hugging Face Daily Papers\";\n\n  const existingIsHF =\n    existing.source === \"Hugging Face Daily Papers\";\n\n\n  // Combine the information from both sources\n  const enriched = {\n    ...existing,\n\n    arxiv_id: arxivId || existing.arxiv_id,\n\n    // Prefer non-empty title/content\n    title: existing.title || article.title || \"\",\n\n    description:\n      existing.description?.length >= article.description?.length\n        ? existing.description\n        : article.description,\n\n    content:\n      existing.content?.length >= article.content?.length\n        ? existing.content\n        : article.content,\n\n    // Always keep original arXiv page\n    original_url:\n      existing.original_url ||\n      article.original_url ||\n      `https://arxiv.org/abs/${arxivId}`,\n\n    // If HF has the paper, prefer HF for Quick Read\n    quick_read_url:\n      currentIsHF\n        ? article.quick_read_url\n        : existingIsHF\n          ? existing.quick_read_url\n          : existing.quick_read_url || article.quick_read_url,\n\n    featured_on_huggingface:\n      existing.featured_on_huggingface === true ||\n      article.featured_on_huggingface === true,\n\n    // Show that the record came from both sources\n    source:\n      existing.source === article.source\n        ? existing.source\n        : \"arXiv + Hugging Face\"\n  };\n\n  byArxivId.set(key, enriched);\n}\n\n\n// ---------- 3. Remove articles already stored in Sheets ----------\nconst newArticles = [...byArxivId.values()].filter(article => {\n\n  const arxivId = getArxivId(article);\n\n  return !arxivId || !existingIds.has(arxivId);\n});\n\n\n// ---------- 4. Return to n8n ----------\nreturn newArticles.map(article => ({\n  json: article\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        64
+      ],
+      "id": "477531cf-6a47-476a-812d-685d6512d6c0",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "957e826c-dd53-403a-8ad3-f136766b3644",
+              "leftValue": "={{ $json.deterministic_relevant }}",
+              "rightValue": "is true ",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        224
+      ],
+      "id": "853be28b-3336-4c1c-b5d0-6739c227fa5a",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const scored = items.map(item => {\n  const article = item.json;\n\n  const keywordScore = article.keyword_match_count || 0;\n\n  const textLength =\n    (article.title || \"\").length +\n    (article.description || \"\").length;\n\n  const lengthBonus = textLength > 800 ? 1 : 0;\n\n  const deterministic_score =\n    keywordScore * 2 +\n    lengthBonus;\n\n  return {\n    json: {\n      ...article,\n      deterministic_score\n    }\n  };\n});\n\nscored.sort((a, b) =>\n  b.json.deterministic_score - a.json.deterministic_score\n);\n\nreturn scored.slice(0, 30);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -128
+      ],
+      "id": "cc31a140-bfce-46c7-8a3d-a0e4f07ed02a",
+      "name": "Deterministic Ranking"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        784,
+        -128
+      ],
+      "id": "1b0daed4-18c3-4e2d-8bed-24293365fb89",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        64
+      ],
+      "id": "fa6fc9e4-42c4-489d-b12a-0f6aea7f4fbc",
+      "name": "Wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ranked = items\n  .filter(item => item.json.valid_json === true)\n  .map(item => {\n    const article = item.json;\n\n    const final_score =\n      (article.relevance_score || 0) * 0.4 +\n      (article.learning_score || 0) * 0.35 +\n      (article.novelty_score || 0) * 0.25;\n\n    return {\n      json: {\n        ...article,\n\n        article_id: article.arxiv_id\n          ? `A-${article.arxiv_id}`\n          : article.article_id || \"\",\n\n        final_score\n      }\n    };\n  });\n\nranked.sort((a, b) =>\n  b.json.final_score - a.json.final_score\n);\n\nreturn ranked.slice(0, 5);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -192
+      ],
+      "id": "683b986e-4509-4062-b356-6e6829a7b571",
+      "name": "Final Ranking - Top 5",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "ARTICLES"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $json.title }}",
+            "url": "={{ $json.url }}",
+            "source": "={{ $json.source }}",
+            "published_at": "={{ $json.published_at }}",
+            "category": "={{ $json.category }}",
+            "summary": "={{ $json.summary }}",
+            "learning_score": "={{ $json.learning_score }}",
+            "novelty_score": "={{ $json.novelty_score }}",
+            "processed_at": "={{ $today }}",
+            "relevance_score": "={{ $json.relevance_score }}",
+            "arxiv_id": "={{ $json.arxiv_id }}",
+            "original_url": "={{ $json.original_url }}",
+            "quick_read_url": "={{ $json.quick_read_url }}",
+            "featured_on_huggingface": "={{ $json.featured_on_huggingface }}",
+            "final_score": "={{ $json.final_score }}",
+            "what_it_does": "={{ $json.what_it_does }}",
+            "why_it_matters": "={{ $json.why_it_matters }}",
+            "article_id": "={{ $json.article_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "article_id",
+              "displayName": "article_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "published_at",
+              "displayName": "published_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "relevance_score",
+              "displayName": "relevance_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "learning_score",
+              "displayName": "learning_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "novelty_score",
+              "displayName": "novelty_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "arxiv_id",
+              "displayName": "arxiv_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "original_url",
+              "displayName": "original_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quick_read_url",
+              "displayName": "quick_read_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "featured_on_huggingface",
+              "displayName": "featured_on_huggingface",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "final_score",
+              "displayName": "final_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "what_it_does",
+              "displayName": "what_it_does",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "why_it_matters",
+              "displayName": "why_it_matters",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1136,
+        64
+      ],
+      "id": "bace0bba-5a60-4545-af54-7f0dde56cb2d",
+      "name": "Append row in sheet",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeHtml(text = \"\") {\n  return String(text)\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\");\n}\n\nconst articles = items.map((item, index) => {\n  const a = item.json;\n\n  const date = a.published_at\n    ? new Date(a.published_at).toLocaleDateString(\"en-GB\", {\n        day: \"numeric\",\n        month: \"short\",\n        year: \"numeric\"\n      })\n    : \"Unknown date\";\n\n  const featured = a.featured_on_huggingface\n    ? \"\\n🔥 Featured on Hugging Face Daily Papers\"\n    : \"\";\n\n  return `${index + 1}️⃣ <b>${escapeHtml(a.title)}</b>\n\n🧭 ${escapeHtml(a.category)} · 📅 ${date}${featured}\n\n🔎 <b>What it does</b>\n${escapeHtml(a.what_it_does)}\n\n💡 <b>Why you should care</b>\n${escapeHtml(a.why_it_matters)}\n\n⭐ Relevance ${a.relevance_score} · Learning ${a.learning_score} · Novelty ${a.novelty_score}\n\n👉 <b>Want to dive deeper?</b>\n<a href=\"${a.quick_read_url}\">Quick read</a> · <a href=\"${a.original_url}\">Original paper</a>`;\n});\n\nconst articleIds = items\n  .map(item => item.json.article_id)\n  .filter(Boolean);\n\nconst best = items[0]?.json;\n\nconst digest = `🤖 <b>AI Daily Digest</b>\n\nToday’s Top ${items.length} AI papers worth your attention:\n\n${articles.join(\"\\n\\n────────────\\n\\n\")}\n\n🏆 <b>Start with #1</b>\n${best ? `Best overall balance today: ${escapeHtml(best.title)}` : \"\"}`;\n\nreturn [\n  {\n    json: {\n      digest_text: digest,\n      article_count: items.length,\n      article_ids: articleIds.join(\",\"),\n      generated_at: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -192
+      ],
+      "id": "a5fb1ace-0a9a-4b0e-be66-fea16f488c13",
+      "name": "Format Daily Digest",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const validItems = items.filter(item => {\n  const p = item.json.paper;\n\n  return (\n    p &&\n    p.id &&\n    p.title\n  );\n});\n\nreturn validItems.map(item => {\n  const p = item.json.paper;\n\n  const arxivId = p.id;\n\n  const summary =\n    p.summary ||\n    p.abstract ||\n    item.json.summary ||\n    \"\";\n\n  return {\n    json: {\n      article_id: null,\n\n      arxiv_id: arxivId,\n\n      title: p.title,\n\n      url: `https://huggingface.co/papers/${arxivId}`,\n\n      original_url: `https://arxiv.org/abs/${arxivId}`,\n\n      quick_read_url: `https://huggingface.co/papers/${arxivId}`,\n\n      source: \"Hugging Face Daily Papers\",\n\n      published_at:\n        p.publishedAt ||\n        item.json.publishedAt ||\n        \"\",\n\n      description: summary,\n      content: summary,\n\n      authors: Array.isArray(p.authors)\n        ? p.authors.map(a => a.name).filter(Boolean)\n        : [],\n\n      featured_on_huggingface: true,\n\n      category: null,\n      relevance_score: null,\n      learning_score: null,\n      novelty_score: null,\n      summary: null,\n\n      processed: false\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        -288
+      ],
+      "id": "085ee6c1-23d6-491f-a1a5-8c2bcdc93a24",
+      "name": "Normalize Hugging Face"
+    },
+    {
+      "parameters": {
+        "url": "https://huggingface.co/api/daily_papers",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit ",
+              "value": "20"
+            },
+            {
+              "name": "sort",
+              "value": "publishedAt"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -624,
+        -288
+      ],
+      "id": "02e9cfdb-7d2a-4033-b3b7-65907e12ca8f",
+      "name": "Hugging Face Daily Papers",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://rss.arxiv.org/rss/cs.AI",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -656,
+        32
+      ],
+      "id": "4d089d85-92b3-40fc-a31e-d2ad751edaca",
+      "name": "Arxiv Daily Papers",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const articles = items[0].json.rss.channel.item || [];\n\nreturn articles.map(article => {\n  const rawUrl = article.link || \"\";\n\n  const arxivId = rawUrl\n    .replace(\"https://arxiv.org/abs/\", \"\")\n    .replace(\"http://arxiv.org/abs/\", \"\")\n    .split(\"v\")[0];\n\n  return {\n    json: {\n      article_id: null,\n\n      arxiv_id: arxivId,\n\n      title: article.title || \"\",\n\n      url: rawUrl,\n\n      original_url: rawUrl,\n\n      quick_read_url: arxivId\n        ? `https://ar5iv.labs.arxiv.org/html/${arxivId}`\n        : rawUrl,\n\n      source: \"arXiv cs.AI\",\n\n      published_at: article.pubDate || \"\",\n\n      description: article.description || \"\",\n      content: article.description || \"\",\n\n      featured_on_huggingface: false,\n\n      category: null,\n      relevance_score: null,\n      learning_score: null,\n      novelty_score: null,\n      summary: null,\n\n      processed: false\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        32
+      ],
+      "id": "aa91470e-9f02-4e7d-84fe-14946575c756",
+      "name": "Normalize arXiv"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -128,
+        -128
+      ],
+      "id": "12fd243e-d66c-4d43-8e1f-8e1cb1595b0d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 309822318,
+          "mode": "list",
+          "cachedResultName": "DAILY_DIGEST"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $now.toFormat('yyyy-MM-dd') }}",
+            "digest_text": "={{ $json.digest_text }}",
+            "sent_at": "={{ $now }}",
+            "article_ids": "={{ $json.article_ids }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "article_ids",
+              "displayName": "article_ids",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "digest_text",
+              "displayName": "digest_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sent_at",
+              "displayName": "sent_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1472,
+        -192
+      ],
+      "id": "e98009f6-1cf1-4aa4-9dce-a7f8c285a74d",
+      "name": "DAILY_DIGEST",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -992,
+        16
+      ],
+      "id": "20ccde93-35b3-4590-aa7c-8e39816613bc",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "SELECT_WORKFLOW_AFTER_IMPORT",
+          "mode": "list",
+          "cachedResultName": "03 - Article Analysis"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "featured_on_huggingface": "={{ $json.featured_on_huggingface }}",
+            "title": "={{ $json.title }}",
+            "url": "={{ $json.url }}",
+            "source": "={{ $json.source }}",
+            "published_at": "={{ $json.published_at }}",
+            "description": "={{ $json.description }}",
+            "content": "={{ $json.content }}",
+            "deterministic_score": "={{ $json.deterministic_score }}",
+            "arxiv_id": "={{ $json.arxiv_id }}",
+            "original_url ": "={{ $json.original_url }}",
+            "quick_read_url": "={{ $json.quick_read_url }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "published_at",
+              "displayName": "published_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "deterministic_score",
+              "displayName": "deterministic_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "arxiv_id",
+              "displayName": "arxiv_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "original_url ",
+              "displayName": "original_url ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "quick_read_url",
+              "displayName": "quick_read_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "featured_on_huggingface",
+              "displayName": "featured_on_huggingface",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.4,
+      "position": [
+        880,
+        272
+      ],
+      "id": "244e0cc8-b502-47c2-bfe1-d7e7d1372ebc",
+      "name": "Call '03 - Article Analysis'",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -992,
+        192
+      ],
+      "id": "9cafc236-e4c7-4c20-92c0-a9013d784682",
+      "name": "When Executed by Another Workflow"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Arxiv Daily Papers",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hugging Face Daily Papers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML": {
+      "main": [
+        [
+          {
+            "node": "Normalize arXiv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Existing Articles": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Keyword Relevance Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keyword Relevance Filter": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Deterministic Ranking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deterministic Ranking": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Final Ranking - Top 5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Call '03 - Article Analysis'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Ranking - Top 5": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Format Daily Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Daily Digest": {
+      "main": [
+        [
+          {
+            "node": "DAILY_DIGEST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hugging Face Daily Papers": {
+      "main": [
+        [
+          {
+            "node": "Normalize Hugging Face",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Arxiv Daily Papers": {
+      "main": [
+        [
+          {
+            "node": "XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize arXiv": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Normalize Hugging Face": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Load Existing Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Hugging Face Daily Papers",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Arxiv Daily Papers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call '03 - Article Analysis'": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Hugging Face Daily Papers",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Arxiv Daily Papers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

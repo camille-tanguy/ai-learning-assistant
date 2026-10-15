@@ -1,0 +1,166 @@
+{
+  "name": "03 - Article Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "openrouter/free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        272,
+        176
+      ],
+      "id": "5bc9f67e-6a21-4b61-a7b4-0da5153079c9",
+      "name": "OpenRouter Chat Model"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "title"
+            },
+            {
+              "name": "url"
+            },
+            {
+              "name": "source"
+            },
+            {
+              "name": "published_at"
+            },
+            {
+              "name": "description"
+            },
+            {
+              "name": "content"
+            },
+            {
+              "name": "deterministic_score",
+              "type": "number"
+            },
+            {
+              "name": "arxiv_id"
+            },
+            {
+              "name": "original_url "
+            },
+            {
+              "name": "quick_read_url"
+            },
+            {
+              "name": "featured_on_huggingface",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "aab0f55f-a2b3-48c7-9399-47e061cdc134",
+      "name": "Receive Article for Analysis"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ `Analyze this AI article for a daily learning digest.\n\nTitle:\n${$json.title}\n\nDescription:\n${$json.description}\n\nReturn ONLY valid JSON with exactly this structure:\n\n{\n  \"what_it_does\": \"Explain the main technical idea of the paper in 1-2 concise sentences using clear language.\",\n  \"why_it_matters\": \"Explain in 1-2 concise sentences why this paper is useful or interesting for someone learning or working in AI/ML/software engineering. Do not simply repeat what the paper does.\",\n  \"category\": \"one short category\",\n  \"relevance_score\": 0,\n  \"learning_score\": 0,\n  \"novelty_score\": 0,\n  \"key_takeaways\": [\n    \"takeaway 1\",\n    \"takeaway 2\"\n  ]\n}\n\nScoring rules:\n- relevance_score: 0-10, importance for AI/ML/software engineering\n- learning_score: 0-10, usefulness for someone learning AI/ML/software engineering\n- novelty_score: 0-10, how new or distinctive the idea appears\n\nWriting rules:\n- what_it_does should explain the contribution itself.\n- why_it_matters should explain why the reader should care.\n- Avoid vague phrases such as \"this paper is important because it advances AI\".\n- Be specific and concrete.\n- Do not include markdown.\n- Do not include any text before or after the JSON.` }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        272,
+        0
+      ],
+      "id": "973fa581-d304-4f06-8c24-c2c81a6222eb",
+      "name": "Analyze Article with LLM"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let raw = $json.text || \"\";\n\n// Remove possible markdown code fences\nraw = raw\n  .replace(/^```json\\s*/i, \"\")\n  .replace(/^```\\s*/i, \"\")\n  .replace(/```$/i, \"\")\n  .trim();\n\nlet parsed = {};\nlet parseError = false;\n\ntry {\n  parsed = JSON.parse(raw);\n} catch (error) {\n  parseError = true;\n}\n\nconst requiredFields = [\n  \"what_it_does\",\n  \"why_it_matters\",\n  \"category\",\n  \"relevance_score\",\n  \"learning_score\",\n  \"novelty_score\",\n  \"key_takeaways\"\n];\n\nconst missingFields = requiredFields.filter(\n  field => parsed[field] === undefined || parsed[field] === null\n);\n\nconst scoresValid =\n  typeof parsed.relevance_score === \"number\" &&\n  parsed.relevance_score >= 0 &&\n  parsed.relevance_score <= 10 &&\n\n  typeof parsed.learning_score === \"number\" &&\n  parsed.learning_score >= 0 &&\n  parsed.learning_score <= 10 &&\n\n  typeof parsed.novelty_score === \"number\" &&\n  parsed.novelty_score >= 0 &&\n  parsed.novelty_score <= 10;\n\nconst contentValid =\n  typeof parsed.what_it_does === \"string\" &&\n  parsed.what_it_does.trim().length > 0 &&\n\n  typeof parsed.why_it_matters === \"string\" &&\n  parsed.why_it_matters.trim().length > 0 &&\n\n  typeof parsed.category === \"string\" &&\n  parsed.category.trim().length > 0 &&\n\n  Array.isArray(parsed.key_takeaways) &&\n  parsed.key_takeaways.length > 0;\n\nconst valid =\n  !parseError &&\n  missingFields.length === 0 &&\n  scoresValid &&\n  contentValid;\n\nreturn {\n  json: {\n    valid_json: valid,\n\n    what_it_does: parsed.what_it_does || \"\",\n    why_it_matters: parsed.why_it_matters || \"\",\n    category: parsed.category || \"\",\n\n    relevance_score: parsed.relevance_score ?? 0,\n    learning_score: parsed.learning_score ?? 0,\n    novelty_score: parsed.novelty_score ?? 0,\n\n    key_takeaways: Array.isArray(parsed.key_takeaways)\n      ? parsed.key_takeaways\n      : [],\n\n    missing_fields: missingFields\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "802386b1-77c9-47d7-8ea7-c0ebbe5b6621",
+      "name": "Parse & Validate Analysis"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const analysis = $json;\nconst original = $('Receive Article for Analysis').first().json;\n\nreturn {\n  json: {\n    title: original.title,\n    url: original.url,\n    source: original.source,\n    published_at: original.published_at,\n\n    arxiv_id: original.arxiv_id || \"\",\n\n    original_url:\n      original.original_url ||\n      original.url ||\n      \"\",\n\n    quick_read_url:\n      original.quick_read_url ||\n      original.url ||\n      \"\",\n\n    featured_on_huggingface:\n      original.featured_on_huggingface ?? false,\n\n    what_it_does: analysis.what_it_does || \"\",\n    why_it_matters: analysis.why_it_matters || \"\",\n\n    category: analysis.category || \"\",\n\n    relevance_score: analysis.relevance_score ?? 0,\n    learning_score: analysis.learning_score ?? 0,\n    novelty_score: analysis.novelty_score ?? 0,\n\n    key_takeaways: analysis.key_takeaways || [],\n\n    valid_json: analysis.valid_json ?? false,\n    deterministic_score: original.deterministic_score\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        176
+      ],
+      "id": "02eb3dc5-71ad-49a8-a179-da56ca9094db",
+      "name": "Build Analyzed Article"
+    }
+  ],
+  "connections": {
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyze Article with LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Article for Analysis": {
+      "main": [
+        [
+          {
+            "node": "Analyze Article with LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Article with LLM": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate Analysis": {
+      "main": [
+        [
+          {
+            "node": "Build Analyzed Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
